@@ -3,6 +3,8 @@ import cv2
 import numpy as np
 from DistanceTracking import EuclideanDistTracker
 import torch
+from collections import defaultdict
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Tracking Application")
@@ -39,17 +41,47 @@ def parse_arguments():
 
     return parser.parse_args()
 
-TRADITIONAL_TRACKING = parse_arguments().ai == False
 
+def get_color_for_type(vehicle_type, color_map):
+    """Generate a unique color for each vehicle type"""
+    if vehicle_type not in color_map:
+        # Generate a random but consistent color for new types
+        np.random.seed(hash(vehicle_type) % (2 ** 32))
+        color = tuple(np.random.randint(50, 255, size=3).tolist())
+        color_map[vehicle_type] = color
+    return color_map[vehicle_type]
+
+
+args = parse_arguments()
+TRADITIONAL_TRACKING = args.ai == False
+DISPLAY_TRACKING = args.display == True
 
 # --- Fő program ---
-VIDEO_FILE = "video.mp4"
+VIDEO_FILE = args.input
 WINDOW_NAME = "Ketiranyu Szamlalo"
+
+DEFAULT_COLOR = (0, 255, 0)
+vehicle_color_map = {}
 
 cap = cv2.VideoCapture(VIDEO_FILE)
 if not cap.isOpened():
     print(f"Hiba: A '{VIDEO_FILE}' nem talalhato vagy nem sikerult megnyitni.")
     exit()
+
+video_writer = None
+if args.output:
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    fourcc = cv2.VideoWriter.fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(args.output, fourcc, fps, (frame_width, frame_height))
+
+    if not video_writer.isOpened():
+        print(f"Hiba: Nem sikerult letrehozni a kimeneti videot: '{args.output}'")
+        video_writer = None
+    else:
+        print(f"Kimenet mentese: {args.output}")
 
 # -- Tradícionális objektumdetektálás inicializálása --
 
@@ -64,6 +96,7 @@ if TRADITIONAL_TRACKING:
 
 if not TRADITIONAL_TRACKING:
     from ultralytics import YOLO
+
     # AI modell betöltése (pl. YOLOv8)
     model = YOLO("./weights/trafic_5.pt")  # Használhat más modellt is
     
@@ -77,8 +110,10 @@ if not TRADITIONAL_TRACKING:
 # Követő inicializálása
 tracker = EuclideanDistTracker()
 
-down_counter = 0
-up_counter = 0
+down_counter = defaultdict(int)
+up_counter = defaultdict(int)
+down_counter["total"] = 0
+up_counter["total"] = 0
 
 counted_ids = []
 LINE_Y = 550  # A számláló vonal Y pozíciója
@@ -89,6 +124,7 @@ while True:
         break
 
     height, width, _ = frame.shape
+    detection_types = []
 
     if TRADITIONAL_TRACKING: # Hagyományos objektumdetektálás
         # ROI
@@ -158,8 +194,14 @@ while True:
             f.write(f'\n{"-"*100}\n\n')
             
         detections = result
-        
+        detection_types = names
+
     boxes_ids = tracker.update(detections)
+
+    type_mapping = {}
+    for idx, box_id in enumerate(boxes_ids):
+        if idx < len(detection_types):
+            type_mapping[box_id[4]] = detection_types[idx]
 
     # Számláló vonal kirajzolása
     cv2.line(frame, (0, LINE_Y), (width, LINE_Y), (0, 255, 0), 2)
@@ -167,35 +209,89 @@ while True:
     for box_id in boxes_ids:
         x, y, w, h, id = box_id
 
+        if not TRADITIONAL_TRACKING and id in type_mapping:
+            vehicle_type = type_mapping[id]
+            box_color = get_color_for_type(vehicle_type, vehicle_color_map)
+        else:
+            vehicle_type = "unknown"
+            box_color = DEFAULT_COLOR
+
         if id not in counted_ids:
             if id in tracker.prev_center_points:
                 prev_y = tracker.prev_center_points[id][1]
                 current_y = tracker.center_points[id][1]
 
                 if prev_y < LINE_Y and current_y >= LINE_Y:
-                    down_counter += 1
+                    # Típus számlálás
+                    down_counter[vehicle_type] += 1
+                    down_counter["total"] += 1
                     counted_ids.append(id)
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 0, 255), 3)
 
                 elif prev_y > LINE_Y and current_y <= LINE_Y:
-                    up_counter += 1
+                    # Típus számlálás
+                    up_counter[vehicle_type] += 1
+                    up_counter["total"] += 1
                     counted_ids.append(id)
                     cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 3)
 
-        cv2.putText(frame, str(id), (x, y - 15), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 2)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Típus címke
+        if not TRADITIONAL_TRACKING and id in type_mapping:
+            label = f"{type_mapping[id]} {id}"
+        else:
+            label = str(id)
 
-    cv2.putText(frame, "Lefele: " + str(down_counter), (50, 50), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255), 3)
-    cv2.putText(frame, "Felfele: " + str(up_counter), (50, 100), cv2.FONT_HERSHEY_PLAIN, 2, (0, 0, 255), 3)
+        cv2.putText(frame, label, (x, y - 15), cv2.FONT_HERSHEY_PLAIN, 1, (255, 0, 0), 2)
+        cv2.rectangle(frame, (x, y), (x + w, y + h), box_color, 2)
 
-    cv2.imshow(WINDOW_NAME, frame)
+    # Dinamikus számláló
+    down_text = f"Lefele: {down_counter['total']}"
+    up_text = f"Felfele: {up_counter['total']}"
 
-    key = cv2.waitKey(20)
-    if key == 27:
-        break
+    if not TRADITIONAL_TRACKING:
+        down_types = [f"{vtype}:{count}" for vtype, count in sorted(down_counter.items()) if vtype != "total"]
+        up_types = [f"{vtype}:{count}" for vtype, count in sorted(up_counter.items()) if vtype != "total"]
 
-    if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
-        break
+        if down_types:
+            down_text = f"Lefele: {down_counter['total']} ({' '.join(down_types)})"
+        if up_types:
+            up_text = f"Felfele: {up_counter['total']} ({' '.join(up_types)})"
+
+    cv2.putText(frame, down_text, (50, 50), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 0, 255), 2)
+    cv2.putText(frame, up_text, (50, 80), cv2.FONT_HERSHEY_PLAIN, 1.5, (0, 0, 255), 2)
+
+    if not TRADITIONAL_TRACKING and vehicle_color_map:
+        legend_x = width - 200
+        legend_y = 50
+        cv2.putText(frame, "Legend:", (legend_x, legend_y), cv2.FONT_HERSHEY_PLAIN, 1.5, (255, 255, 255), 2)
+        legend_y += 30
+
+        for vtype in sorted(vehicle_color_map.keys()):
+            color = vehicle_color_map[vtype]
+            cv2.rectangle(frame, (legend_x, legend_y - 15), (legend_x + 20, legend_y), color, -1)
+            cv2.putText(frame, vtype.capitalize(), (legend_x + 30, legend_y), cv2.FONT_HERSHEY_PLAIN, 1.2,
+                        (255, 255, 255), 2)
+            legend_y += 25
+
+    if video_writer is not None:
+        video_writer.write(frame)
+
+    if DISPLAY_TRACKING:
+        cv2.imshow(WINDOW_NAME, frame)
+
+        key = cv2.waitKey(20)
+        if key == 27:
+            break
+
+        if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
+            break
+    else:
+        key = cv2.waitKey(1)
+        if key == 27:
+            break
 
 cap.release()
+if video_writer is not None:
+    video_writer.release()
+    print(f"Kimenet sikeresen mentve: {args.output}")
 cv2.destroyAllWindows()
