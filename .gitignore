@@ -1,0 +1,10 @@
+.venv/
+_pycache_/
+.vscode/
+archive/
+weights/*
+runs/
+data/*
+archive.zip
+detections.txt
+*.pt
