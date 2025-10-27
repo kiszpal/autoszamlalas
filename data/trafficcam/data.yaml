@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 5
+names: ['Bus', 'Motorbike', 'SUV', 'Sedan', 'Truck']
+
+roboflow:
+  workspace: bennett-wfjzb
+  project: traffic-camera-iuruy
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/bennett-wfjzb/traffic-camera-iuruy/dataset/1
