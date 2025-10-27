@@ -9,16 +9,16 @@ import torch
 from multiprocessing import freeze_support
 
 def main():
-    model = YOLO('yolo11n.pt')
+    model = YOLO('./weights/yolo11n_5p5ep.pt')
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {DEVICE}")
     model.to(DEVICE)
 
     results = model.train(
-        data='./data/data.yaml',
-        epochs=10,
+        data='./data/car_dataset_yolo/data.yaml',
+        epochs=5,
         imgsz=640,
-        batch=16,  
+        batch=8,  
         workers=2 
     )
 

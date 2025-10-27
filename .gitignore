@@ -8,3 +8,4 @@ data/*
 archive.zip
 detections.txt
 *.pt
+*.pdf

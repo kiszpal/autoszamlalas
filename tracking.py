@@ -65,7 +65,7 @@ if TRADITIONAL_TRACKING:
 if not TRADITIONAL_TRACKING:
     from ultralytics import YOLO
     # AI modell betöltése (pl. YOLOv8)
-    model = YOLO("./weights/yolo11n_10ep.pt")  # Használhat más modellt is
+    model = YOLO("./weights/yolo11n_5p5p5ep.pt")  # Használhat más modellt is
     
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -139,7 +139,7 @@ while True:
         for idx, (name, conf) in enumerate(zip(names, confs)):
             print(name, conf, sep=" : ")
             
-            if name == "car" or name == "truck" or name == "bus" or name == "motorbike":
+            if name == "car" or name == "truck" or name == "bus" or name == "motorbike" or name == "vechicle":
                 #if conf < 0.6:
                     #idx_list_to_delete.add(idx)
                 continue
