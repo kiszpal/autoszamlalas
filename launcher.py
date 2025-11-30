@@ -10,13 +10,14 @@ class TrackingApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Vehicle Tracking Launcher")
-        self.root.geometry("600x500")
+        self.root.geometry("600x550")
 
         self.pad_x = 10
         self.pad_y = 5
 
         self.input_path = tk.StringVar(value="video.mp4")
         self.output_path = tk.StringVar(value="")
+        self.max_screen_width = tk.IntVar(value=1280)
         self.use_ai = tk.BooleanVar(value=False)
         self.show_display = tk.BooleanVar(value=True)
         self.process = None
@@ -44,12 +45,17 @@ class TrackingApp:
         tk.Button(form_frame, text="Save As...", command=self.browse_output).grid(row=1, column=2, padx=self.pad_x,
                                                                                   pady=self.pad_y)
 
-        # Separator
-        tk.Frame(form_frame, height=2, bd=1, relief="sunken").grid(row=2, column=0, columnspan=3, sticky="ew", pady=15)
+        # 3. Max Screen Width
+        tk.Label(form_frame, text="Max Screen Width (px):").grid(row=2, column=0, sticky="w", pady=self.pad_y)
+        tk.Entry(form_frame, textvariable=self.max_screen_width, width=40).grid(row=2, column=1, padx=self.pad_x,
+                                                                                pady=self.pad_y)
 
-        # 3. Settings (Checkboxes)
+        # Separator
+        tk.Frame(form_frame, height=2, bd=1, relief="sunken").grid(row=3, column=0, columnspan=3, sticky="ew", pady=15)
+
+        # 4. Settings (Checkboxes)
         settings_frame = tk.Frame(form_frame)
-        settings_frame.grid(row=3, column=0, columnspan=3, sticky="w")
+        settings_frame.grid(row=4, column=0, columnspan=3, sticky="w")
 
         # AI Toggle
         tk.Checkbutton(settings_frame, text="Use AI Tracking (YOLO)", variable=self.use_ai,
@@ -61,7 +67,7 @@ class TrackingApp:
         tk.Checkbutton(settings_frame, text="Show Live Display Window", variable=self.show_display).pack(anchor="w",
                                                                                                          pady=(10, 2))
 
-        # 4. Action Buttons
+        # 5. Action Buttons
         btn_frame = tk.Frame(self.root)
         btn_frame.pack(pady=20)
 
@@ -73,7 +79,7 @@ class TrackingApp:
                                   font=("Helvetica", 12, "bold"), width=10, height=2, command=self.root.quit)
         self.quit_btn.pack(side="left", padx=10)
 
-        # 5. Log Output
+        # 6. Log Output
         tk.Label(self.root, text="Console Output:").pack(anchor="w", padx=20)
         self.log_area = scrolledtext.ScrolledText(self.root, height=8, state='disabled', font=("Consolas", 9))
         self.log_area.pack(fill="both", expand=True, padx=20, pady=(0, 20))
@@ -118,6 +124,8 @@ class TrackingApp:
 
         if self.output_path.get().strip():
             cmd.extend(["--output", self.output_path.get()])
+
+        cmd.extend(["--max_screen_width", str(self.max_screen_width.get())])
 
         if self.use_ai.get():
             cmd.append("--ai")
