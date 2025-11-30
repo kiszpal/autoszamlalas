@@ -17,7 +17,7 @@ def main():
 
     
     try:
-        model = YOLO('yolo11n.pt')
+        model = YOLO('./weights/trafic_5.pt')
     except Exception as e:
         print("Model betöltési hiba:", e)
         return

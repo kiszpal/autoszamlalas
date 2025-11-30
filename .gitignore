@@ -9,3 +9,5 @@ archive.zip
 detections.txt
 *.pt
 *.pdf
+*.zip
+__pycache__/*
