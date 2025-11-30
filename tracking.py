@@ -39,6 +39,13 @@ def parse_arguments():
         default=None,
     )
 
+    parser.add_argument(
+        "--max_screen_width",
+        type=int,
+        help="Maximum width for the display window in pixels.",
+        default=1280,
+    )
+
     return parser.parse_args()
 
 
@@ -68,12 +75,25 @@ if not cap.isOpened():
     print(f"Hiba: A '{VIDEO_FILE}' nem talalhato vagy nem sikerult megnyitni.")
     exit()
 
+frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = int(cap.get(cv2.CAP_PROP_FPS))
+
+LINE_Y = int(frame_height * 0.6)
+print(f"Video Resolution: {frame_width}x{frame_height}")
+print(f"Counting Line set dynamically to Y={LINE_Y}")
+
+if DISPLAY_TRACKING:
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
+
+    if frame_width > args.max_screen_width:
+        ratio = args.max_screen_width / frame_width
+        new_height = int(frame_height * ratio)
+        cv2.resizeWindow(WINDOW_NAME, args.max_screen_width, new_height)
+        print(f"Display resized to: {args.max_screen_width}x{new_height}")
+
 video_writer = None
 if args.output:
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     video_writer = cv2.VideoWriter(args.output, fourcc, fps, (frame_width, frame_height))
 
@@ -116,7 +136,6 @@ down_counter["total"] = 0
 up_counter["total"] = 0
 
 counted_ids = []
-LINE_Y = 550  # A számláló vonal Y pozíciója
 
 while True:
     ret, frame = cap.read()
@@ -126,9 +145,18 @@ while True:
     height, width, _ = frame.shape
     detection_types = []
 
-    if TRADITIONAL_TRACKING: # Hagyományos objektumdetektálás
-        # ROI
-        roi_points = np.array([[0, 400], [width, 400], [width, 700], [0, 700]], np.int32)
+    if TRADITIONAL_TRACKING:  # Hagyományos objektumdetektálás
+        # Dynamic ROI based on LINE_Y
+        roi_top = max(0, LINE_Y - 150)
+        roi_bottom = min(height, LINE_Y + 150)
+
+        roi_points = np.array([
+            [0, roi_top],
+            [width, roi_top],
+            [width, roi_bottom],
+            [0, roi_bottom]
+        ], np.int32)
+
         mask = np.zeros_like(frame)
         cv2.fillPoly(mask, [roi_points], (255, 255, 255))
         roi_frame = cv2.bitwise_and(frame, mask)
@@ -159,7 +187,12 @@ while True:
         confs = []
         
         for res in results:
-            result = res.boxes.xywh.cpu().numpy().astype(int).tolist()
+            if res.boxes is None or len(res.boxes) == 0:
+                continue
+
+            result_tensor = res.boxes.xywh.cpu().numpy().astype(int)
+            result = result_tensor.tolist()
+
             # Convert from xywh (center) to x_topleft, y_topleft, width, height
             for i, (xc, yc, w, h) in enumerate(result):
                 x_tl = int(xc - w / 2)
@@ -173,9 +206,9 @@ while True:
         idx_list_to_delete = set()
         
         for idx, (name, conf) in enumerate(zip(names, confs)):
-            print(name, conf, sep=" : ")
-            
-            if conf < 0.0: # Kesobbi tanitasok utan novelheto, egyelore tul alacsonyak a konfidenciaszintek
+            # print(name, conf, sep=" : ") # Optional logging
+
+            if conf < 0.0:  # Kesobbi tanitasok utan novelheto
                 idx_list_to_delete.add(idx)
                 continue
         
@@ -280,11 +313,15 @@ while True:
         cv2.imshow(WINDOW_NAME, frame)
 
         key = cv2.waitKey(20)
-        if key == 27:
+        if key == 27:  # ESC
             break
 
-        if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
-            break
+        # Stop if window is closed
+        try:
+            if cv2.getWindowProperty(WINDOW_NAME, cv2.WND_PROP_VISIBLE) < 1:
+                break
+        except:
+            pass
     else:
         key = cv2.waitKey(1)
         if key == 27:
